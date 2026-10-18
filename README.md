@@ -77,7 +77,7 @@ Why a port: it is tied to the document. When the page navigates or reloads, the 
 
 **Requests** (answered, timed out by the host): `children`, `reveal`, `relative`, `search`, `scrollIntoView`, `ping`.
 **Commands** (fire and forget): `mode`, `watch { hover, selected }`, `release`, `debug`.
-**Events** (page → host): `hover`, `press`, `key`, `zoom`, `geometry`, `mutations { lists, gone }`, `pageError`, `bye`.
+**Events** (page → host): `hover`, `press`, `key`, `zoom`, `pan`, `geometry`, `mutations { lists, gone }`, `pageError`, `bye`.
 
 `watch` is a declarative subscription. The host diffs what it wants against what it last sent and pushes it whenever hover, selection or mode change. The page streams geometry only for those ids.
 
@@ -133,6 +133,7 @@ The dev menu (bottom right, dev builds only) triggers each case on demand: faili
 - **Page errors and `report()`.** They show as a badge (R6.3) and are reported once each with `{ region: "preview", screenId }`. They do not take the preview down and have no Retry, because nothing on our side failed.
 - **Keys in Interact mode.** Escape, Enter and Tab belong to the page there (forms, focus order). Only V and I reach the host, and not while typing.
 - **Clicking page background** clears the selection and makes that preview active, since it was "clicked in Select mode".
+- **"This element no longer exists" lasts until the next selection**, as written. Escape or clicking empty space while the selection is already empty does not clear the message.
 - **Shift+click removing the last element** leaves an empty selection, not "This element no longer exists". That message is only for elements that vanished.
 - **Selecting while searching** selects and scrolls to the hit but does not expand the underlying tree, so that clearing the search restores the expanded state exactly (R4.11). Expansion during search would contradict that.
 - **Keyboard while the layers panel is focused.** Arrows belong to the panel. Enter, Tab and V/I stay global.
