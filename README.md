@@ -1,167 +1,167 @@
-# Figr — Frontend Engineer Assignment
+# Board viewer
 
-Role and brief: [doc.figr.design/frontend-engineer](https://doc.figr.design/frontend-engineer) · Submit: [join.figr.design/r/kdqVkj](https://join.figr.design/r/kdqVkj)
-
-## Setting
-
-You're building the viewer for a design tool. A board shows live previews of web pages. Each preview is an `<iframe>` showing a page served from a **different origin** than your app. Users point at elements inside any preview. Your app, the page that contains the previews (the "host"), draws the outlines and labels on top of each preview. It also shows a layers panel and an inspector for whatever is selected.
-
-Use any framework, language, library, AI tool or workflow you like.
-
-## What's in this kit
+A board of live, cross-origin page previews with hover and selection outlines, a lazy layers panel and an inspector. Built for the [Figr frontend assignment](https://doc.figr.design/frontend-engineer).
 
 ```
-backend/
-  server.js        mock API (:4000) and page server (:4001), no dependencies
-  data/            screens.json, elements.json
-  pages/           the preview pages
+npm start
+```
+
+That installs dependencies, then runs the mock API (`:4000`), the page server (`:4001`), the agent build in watch mode, and the app at **http://localhost:5173**. Node 18+.
+
+Other scripts: `npm run build` (agent + typecheck + app), `npm run typecheck`.
+
+## Layout
+
+```
+backend/                 starter backend, unchanged except one <script src="agent.js" defer> per page
+  pages/agent.js         built output of frontend/src/agent (committed so the backend works on its own)
 frontend/
-  report.js        error reporter stub
+  report.js              starter error reporter, unchanged
+  src/protocol/          the host <-> page contract. The only code both sides share.
+  src/agent/             runs inside every preview page
+    index.ts             handshake, request dispatch, mutation batching
+    identity.ts          stable element ids across re-renders
+    tree.ts              lazy children, search, reveal, relative navigation
+    picker.ts            the Select-mode glass: hover, press, wheel, keys
+    geometry.ts          streams boxes and live props of watched elements
+  src/host/              the app
+    controller.ts        the single writer of app state
+    state/store.ts       state shape and pure transitions
+    connection/          per-preview session and RPC, handshake routing
+    failures/            regions, scopes, the one place report() is called
+    board/  layers/  inspector/  dev/
 ```
 
-Run the backend with Node 18+:
+## The main calls
 
-```
-npm run backend
-```
+**1. An agent inside each page, not DOM access from outside.** The pages are on another origin, so the host cannot read their DOM. Each page gets one script that owns everything that needs the DOM: hit testing, identity, tree, geometry. The host owns everything the user sees: outlines, panels, state. The two only exchange serialisable messages.
 
-- **Pages** at `http://localhost:4001`: `page-1.html` to `page-6.html`, plus `page-6-next.html`, which page 6 links to. You may add **one `<script>` tag** to each page. You may not change anything else in them.
-- **API** at `http://localhost:4000`. Every route accepts `?latency=<ms>&fail=<0..1>`. A failed request returns either a 5xx or a 200 with a malformed body.
-  - `GET /screens` returns `[{ id, name, url }]`: 24 screens, which reuse the 6 pages.
-  - `GET /elements/:key` returns `{ component, description, status, owner }` for elements that carry a `data-key` attribute. It returns `404` when there are no details for that key.
-- **`report(error, context)`** in `frontend/report.js`: a stub error reporter that logs every call.
+**2. A "glass" for Select mode.** In Select mode the agent puts a transparent full-viewport element above the page, attached to `<html>` (so it is not part of the layers tree). Every pointer event lands on it, so links, buttons, focus and form submission are blocked by construction rather than by cancelling each event type. Targets come from `document.elementsFromPoint`, which also returns disabled controls, SVG children and anything else that never receives events. Because the glass would only ever scroll the document, the agent routes wheel events to the scroll container actually under the pointer, which keeps the inner orders table on page 3 scrollable in Select mode.
 
-Build your app in `frontend/`, or anywhere else in the repo.
+**3. Outlines are drawn by the host in screen space.** The board is a CSS-transformed world. Outlines sit in a separate layer outside that transform, positioned from the page-reported rects multiplied by zoom. They stay 1px and 2px, labels keep their size, and each preview gets a clip box. The agent also reports the part of each element left visible after intersecting with its clipping ancestors, so an element scrolled out of an inner scroll area loses its outline but stays selected.
 
-## Terms
+**4. Geometry is sampled, not inferred.** Elements move because of page scroll, inner scroll areas, layout shifts, re-renders, fonts and resizes. Instead of chasing each cause, the agent samples the few watched elements (the hover plus the selection) once per frame while something is watched, and sends only snapshots that changed. With at most a handful of elements, this costs a few `getBoundingClientRect` calls per frame.
 
-- **Preview**: one iframe on the board.
-- **Element**: any element inside a preview's page except `<html>` and `<body>`.
-- **Active preview**: the preview the user last clicked in Select mode. The layers panel and inspector show the active preview.
-- **Name**: an element's `data-name` if it has one, otherwise tag plus first class (`button.primary`) or tag plus id (`div#hero`), otherwise the tag alone.
+**5. A single writer for state.** Components and agent events call into `controller.ts`, and nothing else writes the store. Cross-frame side effects (requests, `watch` and `mode` commands) are issued there too, so one file answers "what does the host tell a page, and why".
 
-## Requirements
+**6. Failures are scoped, not caught ad hoc.** Every region has a `RegionScope`. Handlers, timers, message callbacks and response continuations all run through it, so an error from any of them becomes the same region failure. Render errors reach the same function through an error boundary. Disposing a scope aborts its requests and drops anything that arrives later.
 
-### R1: Board
+## State: what lives where, who may change it
 
-1. Show every screen from `GET /screens` as a preview, 1280×800 each, in a grid, with the screen name above it.
-2. Dragging empty board space pans the board. The wheel over empty board space pans too.
-3. **Ctrl/Cmd + wheel** zooms the board from 25% to 400%, centred on the pointer. This works **wherever the pointer is, including over a preview**.
-4. The wheel over a preview scrolls that page, in both modes.
-5. Two modes, switched from a toolbar toggle and the **V** key (Select) and **I** key (Interact):
-   - **Select mode** (default): clicks select elements and never reach the page. Links don't navigate, buttons don't act, inputs don't get focus, forms don't submit.
-   - **Interact mode**: the page behaves normally and no outlines are drawn.
-     - The selection is kept but hidden, and it reappears when switching back to Select mode if the elements still exist.
-     - The layers panel keeps updating as the page changes.
+| State | Where | Written by |
+| --- | --- | --- |
+| Screens, viewport, mode, hover, selection, active preview | `useApp` store | `controller.ts` only |
+| Per-preview session, page errors | `useApp.previews[screenId]` | controller, from connection callbacks |
+| Element boxes and live props | `useApp.geometry[screenId][id]` | controller, from `geometry` events |
+| Layers tree cache, expanded rows, scroll position, search | `useApp.layers[screenId]` | controller; pure helpers in `store.ts` |
+| Region failures | `useFailures` | `raise()` / `clearFailure()` in `failures/regions.ts` only |
+| Ports, pending requests, session ids | `PreviewConnection` (not in React) | the connection itself |
+| DOM element ↔ id mapping | `Identity` inside each page | the agent |
+| Dev faults, API latency | `useDevFaults` | dev menu; consumed where the fault fires |
 
-### R2: Hover (Select mode)
+Components read with narrow selectors and never write. The layers state is keyed by preview, which gives R4.9 (switch A → B → A restores A) for free. It is dropped only when that preview's document changes or the board reloads.
 
-1. When the pointer is over an element, draw a **1px outline** exactly on that element's box, with a label showing its name.
-2. Only one element on the whole board is hovered at a time.
-3. Hover clears when the pointer leaves the preview or the window, or when the board starts panning or zooming.
-4. **Every** element can be hovered and selected, including disabled buttons and inputs, images, SVG, and elements under a sticky header.
-5. Page background (`<html>` / `<body>`) is never hovered. Pointing at it shows nothing.
+Selection is `{ screenId, ids[] }` with ids in selection order, so "most recently selected" is the last id. `selectionLost` is a separate flag. It is set only when the selection empties because its elements disappeared, and it drives "This element no longer exists".
 
-### R3: Selection
+## Host ↔ page protocol
 
-1. Clicking selects the element under the pointer. Selected elements get a **2px outline** in a different colour from hover, plus a label.
-2. **Shift + click** adds or removes an element in the same preview. Shift + click in a different preview replaces the selection with that element.
-3. **Escape**, clicking page background, or clicking empty board space clears the selection.
-4. Outlines and labels:
-   - stay glued to their element while the user pans, zooms, scrolls inside the page (including scroll areas inside the page), resizes the window, or the element changes size or moves;
-   - stay 1px or 2px thick and keep the same label size at every zoom level;
-   - are clipped to the preview's edges. An element scrolled fully out of view has no outline but stays selected;
-   - put the label below the element when there's no room above it inside the preview.
-5. **Keyboard.** When several elements are selected, each of these keys acts on the most recently selected one and replaces the selection with the result.
-   - **Enter** selects the first child.
-   - **Shift + Enter** selects the parent. Nothing happens at the top level.
-   - **Tab / Shift + Tab** selects the next or previous sibling, wrapping around.
-6. **All shortcuts** (V, I, Escape, Enter, Tab, and so on) work even right after the user clicked inside a preview.
-7. **The page re-renders itself:**
-   - A selected element that still exists stays selected, even if the page rebuilt its DOM nodes or inserted new siblings before it.
-   - A selected element that no longer exists is removed from the selection. If nothing remains selected, the inspector says **"This element no longer exists"** until the next selection.
-   - The selection must never jump to a different element. If your approach can't guarantee this in some case, say which case in your README.
-8. **A page navigates** (a link followed in Interact mode):
-   - That preview's selection clears.
-   - Select mode works on the new page with no reload of the board.
-   - The layers panel shows the new page.
+Types are in `frontend/src/protocol/messages.ts`.
 
-### R4: Layers panel
+**Handshake.**
+1. The agent boots and posts `figr:hello { protocol, url }` to `window.parent`.
+2. The host accepts it only from the pages origin and only from a registered iframe window, matched by `event.source`.
+3. The host creates a `MessageChannel` and replies `figr:connect { sessionId, mode }`, transferring one port.
+4. From then on all traffic uses that port. The window message channel carries nothing else.
 
-1. It shows the element tree of the active preview. With no active preview, it shows "Click something in a preview".
-2. Each row shows indentation, the element's name, and a chevron if the element has children. Top-level rows are the children of `<body>`.
-3. **Children load when a row is first expanded.** While loading, the row shows a loading state. If the page doesn't answer within 3 seconds, the row shows "Couldn't load" with a retry on that row only.
-   - Collapsing and re-expanding a row, including while it's still loading, must never produce duplicate or missing children.
-4. **Hover sync, both directions:**
-   - Hovering a row draws the hover outline on that element in the preview.
-   - Hovering an element in the preview highlights its row. If that row is inside a collapsed parent, highlight the nearest visible ancestor row instead. Hover never expands anything.
-5. **Selection sync, both directions:**
-   - Clicking a row selects that element.
-   - Selecting an element in the preview expands every ancestor of its row (loading them if needed, even many levels deep), highlights the row, and scrolls the panel to show it.
-6. Clicking a row whose element is out of view inside the page scrolls **only that page** to show the element. The board and the host page don't move.
-7. **Multi-select:** Shift + click on a row adds or removes it, and all selected rows are highlighted.
-8. **Keyboard while the panel has focus:**
-   - **↑ / ↓** select the previous or next visible row.
-   - **→** expands a row, or moves to its first child if it's already expanded.
-   - **←** collapses a row, or moves to its parent if it's already collapsed.
-9. **Expanded rows and panel scroll position are remembered per preview.** Switching the active preview to B and back to A restores A exactly as it was left, until A's page navigates or the board reloads.
-10. **When the page changes its own DOM, the tree updates to match:**
-    - Rows that still exist keep their expanded state and selection.
-    - Removed rows disappear, and a removed hovered row clears the hover.
-    - Rows the user is looking at don't jump. The scroll position holds steady.
-11. **Search box:**
-    - Typing shows only rows whose name contains the text, together with their ancestors.
-    - Search covers the whole tree, including rows never loaded.
-    - Clearing the search restores exactly the expanded state from before the search.
-    - Selecting a search result selects the element and keeps the search open.
+Why a port: it is tied to the document. When the page navigates or reloads, the old port dies with the old document and the new document has to say hello again. That makes "a different document now" an explicit event (a new session) instead of something to detect.
 
-### R5: Inspector
+**Requests** (answered, timed out by the host): `children`, `reveal`, `relative`, `search`, `scrollIntoView`, `ping`.
+**Commands** (fire and forget): `mode`, `watch { hover, selected }`, `release`, `debug`.
+**Events** (page → host): `hover`, `press`, `key`, `zoom`, `geometry`, `mutations { lists, gone }`, `pageError`, `bye`.
 
-1. With **one** element selected, it has two sections:
-   - **Live** (read from the page): name, tag, id, classes, width × height (px, rounded), position within the page, the first 120 characters of text, text colour, background colour, font family, size and weight. Values update when the element changes.
-   - **Details** (from `GET /elements/:key`): component, description, status, owner.
-     - An element with no `data-key` shows "No details".
-     - A `404` shows "No details for this element". A 404 is not an error.
-2. With **several** elements selected, it shows "N elements", and each Live field shows either the value they all share or "Mixed". There is no Details section.
-3. When the selection changes while Details are loading, only the latest selection's details are ever shown.
+`watch` is a declarative subscription. The host diffs what it wants against what it last sent and pushes it whenever hover, selection or mode change. The page streams geometry only for those ids.
 
-### R6: Failures
+**When one side is slow, gone or replaced:**
 
-1. **Regions.** Each of these is its own region: the board, each preview, the layers panel, each row's child loading, and the inspector's Details section.
-2. **A failure in a region shows an error with a Retry button in that region only.** Everything else keeps working.
-   - `GET /screens` fails → the board shows the error.
-   - A preview's page doesn't load, or its script doesn't respond within 10 seconds → "Couldn't connect to this preview" on that preview only.
-   - `GET /elements/:key` fails or returns bad data → error in Details only. Live values still show.
-   - A render error in the inspector → the inspector shows the error. The board and the layers panel keep working.
-3. **Errors inside a page** are shown as a small "Page error" badge on that preview. Hovering the badge shows the message.
-4. **Reporting:**
-   - Every failure reaches `report()` **exactly once**, with `{ region, screenId, elementKey? }`.
-   - A retry that fails again counts as a new failure.
-   - A request that was cancelled or replaced because the user moved on is **not** a failure: no error is shown and nothing is reported.
-5. **Where an error happens doesn't matter.** An error thrown while drawing, handling a click or key, handling a message from a preview, in a timer, or when a response arrives gets the same region error and the same single report.
-6. **A response or error that arrives after its region is gone** changes nothing and reports nothing.
-7. **A dev-only menu** can trigger each of these failures on demand, for the video.
+- *Slow.* Every request has a timeout: 3 s for row children, 5 s otherwise, 10 s for the post-load ping. A timeout is a failure of the region that asked.
+- *Gone.* The agent sends `bye` on `pagehide`, which the host treats as "reconnecting" and gives 10 s. A message posted during unload is not reliable, though. So on every iframe `load` event the host also pings the current session. A dead port never answers, which becomes "Couldn't connect to this preview" after 10 s. A page with no agent at all (404, an external site) ends up the same way.
+- *Replaced.* A new hello ends the old session. Every pending request is rejected with `Cancelled`, which is not a failure: nothing is shown or reported. If the session replaced an earlier one, the document changed, so that preview's selection, hover, geometry, layers state and row loads are dropped (R3.8).
+- *Host gone.* The page has nothing to clean up. Its port is garbage.
 
-### Out of scope
+Keyboard: in Select mode the glass takes pointer events, and `mousedown` default is prevented, but the iframe can still end up with focus. The agent forwards keys in Select mode (and blocks them from the page), so shortcuts work whichever side has focus (R3.6). In Interact mode only `V` and `I` are forwarded, and never while the user is typing in a field.
 
-Editing pages, saving anything across a reload, auth, mobile, and more than one user.
+## Element identity across re-renders
 
-## Deliverables
+`agent/identity.ts`. Ids are given out lazily, only for elements the host has seen. After each mutation batch, any id whose element is disconnected is resolved again, strongest evidence first:
 
-1. **A public GitHub repo** that runs the backend and your app with one command.
-2. **A README** covering:
-   - any requirement you found ambiguous or contradictory, and what you decided;
-   - how state is organised: what lives where, and who is allowed to change it;
-   - how the host and the pages talk to each other: the messages, and what happens when one side is slow, gone, or replaced;
-   - **"where this breaks"**: the cases you know your build gets wrong.
-3. **A 15-minute video** (Loom or any shareable link) explaining your code. We evaluate your system design calls mainly from this video, so talk through the *why*, not just the *what*.
-   - **2 min**: what you built and the main calls you made.
-   - **8 min**: walk through the code behind R1–R6, showing each part running. Cover your state model, the host ↔ page protocol, how you identify elements across re-renders and navigation, how the tree loads, and how failures are contained and reported.
-   - **3 min**: where it breaks, and what you'd change with another week.
-   - **2 min**: how you used AI, and where it got things wrong.
+1. **`data-key`**: authoritative. A unique, same-tag match is the element, and no match means it is gone. We never fall back to weaker rules for keyed elements.
+2. **`id` attribute**: used only with exactly one candidate.
+3. Under the recursively resolved **parent**: a unique child with an identical fingerprint (tag, attributes, text).
+4. The same, with **digits ignored** in text. Re-renders mostly change counters and relative times ("18s ago"), not what an element is.
+5. **In-place re-render**: same child count, and every sibling lines up exactly by fingerprint, so only this slot's content changed.
 
-You may study any public product, Figr included. If you do, say what you took and why it works.
+Every rule requires uniqueness. A false "gone" costs the user a click, while a selection jumping to another element is a correctness bug, so ambiguity always resolves to "gone". Page 4 (the feed rebuilds every node every 2 s and inserts above) keeps keyed items, their descendants and unkeyed items selected.
 
-## Submitting
+The same batch produces one `mutations { lists, gone }` message. The host never sees a child list that references an id the page has already declared dead.
 
-Submit your repo, video and resume here: **https://join.figr.design/r/kdqVkj**
+## How the tree loads
+
+- Rows load children on first expand. Each row has at most one request in flight. Collapsing does not cancel it, re-expanding does not start another, and the response *replaces* the row's child list instead of appending. So there are never duplicate or missing children.
+- A parent whose children the host has loaded is "observed" by the agent. After each mutation batch the agent sends the new child list of every observed parent that changed. The host replaces the list, and expanded state survives because it is keyed by stable id.
+- Selecting in a preview sends one `reveal` request that returns the child lists of every ancestor, so a selection 60 levels deep on page 5 costs one round trip. It is skipped when every ancestor is already loaded.
+- The list is virtualised with fixed-height rows. When rows are inserted or removed above the viewport, the first visible row is anchored, so the rows the user is looking at do not move (R4.10). Native `overflow-anchor` is off so that it doesn't double-adjust.
+- Search runs in the page over the whole DOM, including rows never loaded. Each hit carries its ancestor chain, and the panel renders that as a separate view. It never touches the expanded state, so clearing the search restores it exactly.
+
+## Failures
+
+`failures/regions.ts` is the only caller of `report()`.
+
+- **Regions:** `board`, `preview` (one per screen), `layers` (one per screen), `layers-row` (per row), `details` (per element key), `inspector`.
+- **Exactly once:** `raise(ref, error)` records the failure and reports it. While a region is failed, further errors in it are swallowed until Retry, so a cascade inside one region is one failure. Retry disposes the scope and mounts fresh, so a retry that fails again is a new failure.
+- **Not failures:** `Cancelled` and `AbortError`, raised when a selection changes during a Details request, a session is replaced, or a newer search runs.
+- **Late arrivals:** a disposed scope ignores results and errors, and an unmounted Details region aborts its fetch.
+- **Same handling everywhere:** render (error boundary), click, key and message handlers (`scope.wrap`), timers (`scope.setTimeout`) and responses (`scope.settle`) all reach `raise`.
+- **API validation:** `/screens` and `/elements/:key` bodies are validated. A 5xx or a malformed body is a failure, and a 404 on details is "No details for this element".
+
+The dev menu (bottom right, dev builds only) triggers each case on demand: failing `/screens`, breaking a preview's connection, throwing in a preview message handler, making the next row load time out, throwing while rendering layers or the inspector, throwing in an inspector timer, failing the next Details request, and throwing in the next key handler. It also has an API latency control. Page errors come from page 1 ("Watch demo" in Interact mode) and page 6 (a rejected promise after 4 s).
+
+## Ambiguities and what I decided
+
+- **Wheel over a preview vs. panning the board.** R1.4 says the wheel over a preview scrolls that page, but on a trackpad that makes the board impossible to move with two fingers once the pointer is over a page that cannot scroll (Sign up, Landing). I kept R1.4 and added the browser's own rule for nested scroll areas: the page scrolls first, and when nothing under the pointer can scroll further in that direction, the wheel chains to the board. Each gesture is latched to whichever side it started on (250 ms), so momentum running past the end of a page does not suddenly pan the board.
+- **Getting lost.** A minimap (bottom left) always frames both the previews and the current view, so it still shows where you are after panning far into empty canvas. Click or drag on it to move, and use −, +, and Fit all.
+
+- **Page errors and `report()`.** They show as a badge (R6.3) and are reported once each with `{ region: "preview", screenId }`. They do not take the preview down and have no Retry, because nothing on our side failed.
+- **Keys in Interact mode.** Escape, Enter and Tab belong to the page there (forms, focus order). Only V and I reach the host, and not while typing.
+- **Clicking page background** clears the selection and makes that preview active, since it was "clicked in Select mode".
+- **Shift+click removing the last element** leaves an empty selection, not "This element no longer exists". That message is only for elements that vanished.
+- **Selecting while searching** selects and scrolls to the hit but does not expand the underlying tree, so that clearing the search restores the expanded state exactly (R4.11). Expansion during search would contradict that.
+- **Keyboard while the layers panel is focused.** Arrows belong to the panel. Enter, Tab and V/I stay global.
+- **The layers panel's own failures** (root children, reveal, search) are the `layers` region. Child loads of a single row are `layers-row`.
+- **Retry on a preview** reloads the iframe. The document is new, so that preview's selection clears, as with navigation.
+- **A key handler failure with no preview involved** (V or I) is a `board` failure. Keys that act on a selection fail in that selection's preview region.
+
+## Where this breaks
+
+- **Identity heuristics can still be fooled.** If an unkeyed element is removed and, in the same batch, a sibling appears that is identical except for digits, rule 4 treats it as the same element. If a list re-renders in place with the same shape and only the selected slot's content changes, rule 5 keeps the slot. These are the cases where the selection could "jump". Duplicate `data-key`s are treated as ambiguous, so the element is reported gone.
+- **Visibility ignores occlusion and some clipping.** An element under the sticky header still gets an outline drawn over the header. `clip-path`, transforms, and fixed or sticky descendants escaping a clipping ancestor are not modelled.
+- **`pointer-events: none` elements** cannot be hovered on the board, because `elementsFromPoint` skips them. They are still selectable from the layers panel.
+- **The top layer** (`<dialog>` opened modally, popovers) sits above the glass, so clicks there reach the page in Select mode.
+- **Shadow DOM and nested iframes** inside pages are not traversed.
+- **Wheel in Select mode** is reimplemented scroll chaining: no smooth scrolling or overscroll effects, and a simple Shift-to-horizontal rule.
+- **Offscreen previews.** Browsers throttle `requestAnimationFrame` in offscreen cross-origin iframes, so live values for a selected element in a preview that is scrolled off the board update less often. Scroll, resize and mutation events still push updates.
+- **Search** is capped at 3,000 hits, and the result says so.
+- **Performance.** All 24 iframes stay live. Unloading previews outside the viewport is the obvious next step.
+
+## With another week
+
+- Unload or snapshot previews outside the viewport, and keep a pool of live ones.
+- Replace per-frame sampling with `ResizeObserver` + `IntersectionObserver` + scroll listeners, using rAF only as a fallback, and measure the difference.
+- Model occlusion: when an outline is covered, show it dashed.
+- Property-based tests for identity: generate random re-renders of a tree, then assert that a selection never resolves to a node with a different logical identity.
+- Playwright tests for each R-item, plus contract tests for the protocol with a fake agent.
+
+## Prior art
+
+- **Chrome DevTools' element picker:** hit testing with `elementsFromPoint` over a transparent overlay, and a hover box with a name label.
+- **Figma:** selection versus hover colours, labels that flip below when there's no room, and outlines that keep the same width at any zoom because they are drawn outside the zoomed content.
+- **React's reconciliation:** the identity rules borrow its idea of "key first, then type and position". The difference is that a keyless position match is accepted only when it cannot be a different item.

@@ -1,9 +1,31 @@
 {
   "name": "figr-frontend-assignment",
   "private": true,
-  "description": "Starter kit for the Figr frontend engineer assignment",
-  "engines": { "node": ">=18" },
+  "description": "Board viewer with cross-origin element inspection",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "backend": "node backend/server.js"
+    "prestart": "npm install --no-audit --no-fund --loglevel=error",
+    "start": "concurrently -k -n api,agent,app -c gray,magenta,cyan \"npm:backend\" \"npm:agent:watch\" \"npm:dev\"",
+    "backend": "node backend/server.js",
+    "dev": "vite",
+    "agent:build": "vite build --config vite.agent.config.mts",
+    "agent:watch": "vite build --config vite.agent.config.mts --watch",
+    "build": "npm run agent:build && tsc -p . && vite build",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "concurrently": "^9.0.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
   }
 }
