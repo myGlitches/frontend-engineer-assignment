@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PREVIEW_HEIGHT, PREVIEW_WIDTH } from "../config";
 import { centerOn, fitBoard, zoomStep } from "../controller";
 import { useApp } from "../state/store";
@@ -6,17 +6,32 @@ import { previewOrigin, worldBounds } from "./layout";
 
 const MAP_WIDTH = 160;
 const MAP_HEIGHT = 120;
+const LINGER_MS = 1200;
 
 /**
- * Overview of the whole board with the visible area drawn on top. Clicking or
- * dragging on it moves the view there, so the user can always find their way
- * back from empty canvas.
+ * Zoom controls that are always visible, plus an overview map of the whole
+ * board that appears while the view is moving or the controls are hovered.
+ * Clicking or dragging on the map moves the view there, so the user can always
+ * find their way back from empty canvas.
  */
 export function Minimap({ count }: { count: number }) {
   const viewport = useApp((s) => s.viewport);
   const activeScreenId = useApp((s) => s.activeScreenId);
   const screens = useApp((s) => s.screens);
   const mapRef = useRef<HTMLDivElement>(null);
+  const [moving, setMoving] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const firstRender = useRef(true);
+
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    setMoving(true);
+    const t = window.setTimeout(() => setMoving(false), LINGER_MS);
+    return () => window.clearTimeout(t);
+  }, [viewport.x, viewport.y, viewport.zoom]);
 
   const size = useApp((s) => s.boardSize);
   const view = {
@@ -43,7 +58,13 @@ export function Minimap({ count }: { count: number }) {
   };
 
   return (
-    <div className="minimap" data-no-pan onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+    <div
+      className={`minimap${moving || hovered ? " is-open" : ""}`}
+      data-no-pan
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+    >
       <div
         ref={mapRef}
         className="minimap__map"

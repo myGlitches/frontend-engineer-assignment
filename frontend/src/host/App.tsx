@@ -7,6 +7,7 @@ import { LayersPanel } from "./layers/LayersPanel";
 import { useApp } from "./state/store";
 
 export function App() {
+  const panelsHidden = useApp((s) => s.panelsHidden);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -27,18 +28,21 @@ export function App() {
   return (
     <div className="app">
       <Toolbar />
-      <main className="workspace">
-        <LayersPanel />
+      <main className={`workspace${panelsHidden ? " workspace--canvas-only" : ""}`}>
+        {!panelsHidden && <LayersPanel />}
         <BoardRegion />
-        <Inspector />
+        {!panelsHidden && <Inspector />}
       </main>
       {import.meta.env.DEV && <DevMenu />}
     </div>
   );
 }
 
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+
 function Toolbar() {
   const mode = useApp((s) => s.mode);
+  const panelsHidden = useApp((s) => s.panelsHidden);
   const zoom = useApp((s) => s.viewport.zoom);
   return (
     <header className="toolbar">
@@ -51,6 +55,15 @@ function Toolbar() {
           Interact <kbd>I</kbd>
         </button>
       </div>
+      <button
+        type="button"
+        className="toolbar__toggle"
+        aria-pressed={panelsHidden}
+        onClick={() => useApp.setState((s) => ({ panelsHidden: !s.panelsHidden }))}
+        title="Show or hide the side panels"
+      >
+        {panelsHidden ? "Show panels" : "Hide panels"} <kbd>{IS_MAC ? "⌘" : "Ctrl"} \</kbd>
+      </button>
       <div className="toolbar__zoom">{Math.round(zoom * 100)}%</div>
     </header>
   );

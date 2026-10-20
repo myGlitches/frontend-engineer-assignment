@@ -391,7 +391,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     onKey(e) {
       const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      if (this.mode === "select") {
+      if ((e.metaKey || e.ctrlKey) && key === "\\") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      } else if (this.mode === "select") {
         e.stopImmediatePropagation();
         if (HOST_SHORTCUT_KEYS.has(key) || plain) e.preventDefault();
       } else {

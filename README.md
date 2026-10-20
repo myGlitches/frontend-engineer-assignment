@@ -128,7 +128,7 @@ The dev menu (bottom right, dev builds only) triggers each case on demand: faili
 ## Ambiguities and what I decided
 
 - **Wheel over a preview vs. panning the board.** R1.4 says the wheel over a preview scrolls that page, but on a trackpad that makes the board impossible to move with two fingers once the pointer is over a page that cannot scroll (Sign up, Landing). I kept R1.4 and added the browser's own rule for nested scroll areas: the page scrolls first, and when nothing under the pointer can scroll further in that direction, the wheel chains to the board. Each gesture is latched to whichever side it started on (250 ms), so momentum running past the end of a page does not suddenly pan the board.
-- **Getting lost.** A minimap (bottom left) always frames both the previews and the current view, so it still shows where you are after panning far into empty canvas. Click or drag on it to move, and use −, +, and Fit all.
+- **Getting lost.** A minimap (bottom left) always frames both the previews and the current view, so it still shows where you are after panning far into empty canvas. The map appears while the view moves or when you hover the zoom bar, and fades out otherwise. Click or drag on it to move, and use −, +, and Fit all. ⌘/Ctrl + \\ hides both side panels for a full-canvas view, as in Figma.
 
 - **Page errors and `report()`.** They show as a badge (R6.3) and are reported once each with `{ region: "preview", screenId }`. They do not take the preview down and have no Retry, because nothing on our side failed.
 - **Keys in Interact mode.** Escape, Enter and Tab belong to the page there (forms, focus order). Only V and I reach the host, and not while typing.

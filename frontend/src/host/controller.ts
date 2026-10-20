@@ -359,6 +359,10 @@ type ShortcutEvent = Pick<KeyboardEvent, "key" | "shiftKey" | "ctrlKey" | "metaK
 
 /** Board-level shortcuts. Returns true when the key was handled. */
 export function handleShortcut(e: ShortcutEvent): boolean {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key === "\\") {
+    set({ panelsHidden: !get().panelsHidden, hover: null });
+    return true;
+  }
   if (e.ctrlKey || e.metaKey || e.altKey) return false;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   const s = get();

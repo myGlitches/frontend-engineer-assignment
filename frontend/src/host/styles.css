@@ -25,13 +25,16 @@ kbd { font-family: ui-monospace, monospace; font-size: 10px; padding: 0 4px; bor
 
 .toolbar { display: flex; align-items: center; gap: 16px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .toolbar__brand { font-weight: 600; }
-.toolbar__zoom { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
+.toolbar__toggle { margin-left: auto; border: 1px solid var(--border); background: #fff; border-radius: 6px; padding: 4px 10px; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.toolbar__toggle:hover { background: var(--bg); }
+.toolbar__zoom { font-variant-numeric: tabular-nums; color: var(--muted); }
 .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .segmented button { border: 0; background: none; padding: 4px 10px; display: flex; gap: 6px; align-items: center; cursor: pointer; }
 .segmented button[aria-checked="true"] { background: var(--text); color: #fff; }
 .segmented button[aria-checked="true"] kbd { color: #d4d4d8; border-color: #52525b; }
 
 .workspace { display: grid; grid-template-columns: 280px 1fr 300px; min-height: 0; }
+.workspace--canvas-only { grid-template-columns: 1fr; }
 
 .panel { background: var(--panel); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .layers { border-right: 1px solid var(--border); }
@@ -115,13 +118,14 @@ kbd { font-family: ui-monospace, monospace; font-size: 10px; padding: 0 4px; bor
 .devmenu__item.is-armed { border-color: var(--selected); background: #fff7ed; }
 .devmenu__note { margin: 4px; color: var(--muted); font-size: 11px; }
 
-.minimap { position: absolute; left: 12px; bottom: 12px; background: rgba(255, 255, 255, 0.95); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-.minimap__map { position: relative; overflow: hidden; cursor: pointer; background: var(--board); border-radius: 4px; }
-.minimap__preview { position: absolute; background: #fff; border-radius: 1px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06); }
-.minimap__preview.is-active { background: #fed7aa; }
+.minimap { position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.minimap__map { position: relative; overflow: hidden; cursor: pointer; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity 160ms ease, transform 160ms ease; }
+.minimap.is-open .minimap__map { opacity: 1; transform: none; pointer-events: auto; }
+.minimap__preview { position: absolute; background: var(--border); border-radius: 1px; }
+.minimap__preview.is-active { background: var(--selected); }
 .minimap__view { position: absolute; border: 1.5px solid var(--hover); background: rgba(14, 165, 233, 0.08); border-radius: 2px; pointer-events: none; }
-.minimap__controls { display: flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
-.minimap__controls span { min-width: 40px; text-align: center; color: var(--muted); }
-.minimap__controls button { border: 1px solid var(--border); background: #fff; border-radius: 4px; min-width: 24px; height: 24px; cursor: pointer; }
+.minimap__controls { display: flex; align-items: center; gap: 2px; padding: 3px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); font-variant-numeric: tabular-nums; }
+.minimap__controls span { min-width: 44px; text-align: center; color: var(--muted); font-size: 12px; }
+.minimap__controls button { border: 0; background: none; border-radius: 5px; min-width: 26px; height: 26px; cursor: pointer; color: var(--text); }
 .minimap__controls button:hover { background: var(--bg); }
-.minimap__fit { margin-left: auto; padding: 0 8px; }
+.minimap__fit { padding: 0 8px; border-left: 1px solid var(--border) !important; border-radius: 0 5px 5px 0 !important; margin-left: 2px; }

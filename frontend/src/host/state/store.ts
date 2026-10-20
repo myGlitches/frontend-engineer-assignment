@@ -56,6 +56,8 @@ export interface AppState {
   viewport: Viewport;
   boardSize: { width: number; height: number };
   mode: Mode;
+  /** Side panels hidden for a full-canvas view (Cmd/Ctrl + \\). */
+  panelsHidden: boolean;
   hover: Hover | null;
   selection: Selection;
   /** Set when the selection emptied because its elements disappeared from the page. */
@@ -74,6 +76,7 @@ export const useApp = create<AppState>(() => ({
   viewport: { x: 48, y: 72, zoom: 0.3 },
   boardSize: { width: 0, height: 0 },
   mode: "select",
+  panelsHidden: false,
   hover: null,
   selection: EMPTY_SELECTION,
   selectionLost: false,
